@@ -1,0 +1,101 @@
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path raw_reads_files
+  --input-format CasavaOneEightLanelessPerSampleDirFmt \
+  --output-path demux_paired_end.qza
+qiime demux summarize --i-data demux_paired_ends_feed.qza --o-visualization demux_paired_end_feed.qzv
+qiime dada2 denoise-paired --i-demultiplexed-seqs demux_paired_ends_live.qza --p-trim-left-f 50 --p-trim-left-r 10 --p-trunc-len-f 270 --p-trunc-len-r 200 --o-table table_live.qza --o-representative-sequences rep_seqs_live.qza --o-denoising-stats denoising_stats_live.qza
+qiime metadata tabulate --m-input-file denoising_stats.qza --o-visualization denoising-stats.qzv
+qiime feature-table merge --i-tables run1/table.qza --i-tables run2/table.qza --o-merged-table table.qza
+qiime feature-table merge-seqs --i-data run1/rep_seqs.qza --i-data run2/rep_seqs.qza --o-merged-data rep_seqs.qza
+qiime feature-table summarize --i-table table.qza --o-visualization table.qzv --m-sample-metadata-file Metadata.tsv
+qiime feature-table tabulate-seqs --i-data rep_seqs.qza --o-visualization rep_seqs.qzv
+qiime phylogeny align-to-tree-mafft-fasttree --i-sequences rep_seqs.qza --o-alignment aligned_rep_seqs.qza --o-masked-alignment masked_aligned_rep_seqs.qza --o-tree unrooted-tree.qza --o-rooted-tree rooted_tree.qza
+qiime diversity core-metrics-phylogenetic --i-phylogeny rooted_tree.qza --i-table table.qza --p-sampling-depth 1000 --m-metadata-file Metadata.tsv --output-dir core_metrics
+qiime diversity alpha-group-significance --i-alpha-diversity core_metrics/shannon_vector.qza --m-metadata-file Metadata.tsv --o-visualization core_metrics/shannon_significance.qzv
+
+qiime diversity alpha-group-significance --i-alpha-diversity core_metrics/observed_features_vector.qza --m-metadata-file Metadata.tsv --o-visualization core_metrics/observed_otus_significance.qzv
+
+qiime diversity alpha-group-significance --i-alpha-diversity core_metrics/faith_pd_vector.qza --m-metadata-file Metadata.tsv --o-visualization core_metrics/faith_pd_significance.qzv
+qiime diversity beta-group-significance --i-distance-matrix core_metrics/unweighted_unifrac_distance_matrix.qza --m-metadata-file Metadata.tsv --m-metadata-column Time --o-visualization core_metrics/unweighted_unifrac_time_group_significance.qzv --p-pairwise
+qiime diversity alpha-rarefaction --i-table table.qza --i-phylogeny rooted_tree.qza --p-max-depth 100000 --m-metadata-file Metadata.tsv --o-visualization alpha_rarefaction.qzv
+wget -O "silva-138-99-nb-classifier.qza" "https://s3-us-west-2.amazonaws.com/qiime2-data/2022.8/common/silva-138-99-nb-classifier.qza" 
+qiime rescript get-silva-data \
+    --p-version '138.1' \
+    --p-target 'SSURef_NR99' \
+        --o-silva-sequences silva-138.1-ssu-nr99-rna-seqs2.qza \
+    --o-silva-taxonomy silva-138.1-ssu-nr99-tax2.qza
+qiime rescript reverse-transcribe --i-rna-sequences silva-138.1-ssu-nr99-rna-seqs2.qza --o-dna-sequences silva-138.1-ssu-nr99-seqs2.qza
+qiime rescript filter-seqs-length-by-taxon \
+    --i-sequences silva-138.1-ssu-nr99-seqs2.qza \
+    --i-taxonomy silva-138.1-ssu-nr99-tax2.qza \
+    --p-labels Bacteria \
+    --p-min-lens 1200 \
+    --o-filtered-seqs silva-138.1-ssu-nr99-seqs2-filt.qza \
+    --o-discarded-seqs silva-138.1-ssu-nr99-seqs2-discard.qza 
+qiime rescript dereplicate \
+    --i-sequences silva-138.1-ssu-nr99-seqs2-filt.qza  \
+    --i-taxa silva-138.1-ssu-nr99-tax2.qza \
+    --p-rank-handles 'silva' \
+    --p-mode 'uniq' \
+    --o-dereplicated-sequences silva-138.1-ssu-nr99-seqs2-derep-uniq.qza \
+    --o-dereplicated-taxa silva-138.1-ssu-nr99-tax2-derep-uniq.qza
+qiime feature-classifier extract-reads \
+  --i-sequences silva-138.1-ssu-nr99-seqs2.qza \
+  --p-f-primer GTGYCAGCMGCCGCGGTA \
+  --p-r-primer CCCGYCAATTCMTTTRAGT \
+  --p-n-jobs 2 \
+  --p-read-orientation 'forward' \
+  --o-reads silva-138.1-ssu-nr99-seqs2-515f-927r.qza
+qiime rescript dereplicate --i-sequences silva-138.1-ssu-nr99-seqs2-515f-927r.qza --i-taxa silva-138.1-ssu-nr99-tax2.qza --p-rank-handles 'silva' --p-mode 'uniq' --o-dereplicated-sequences silva-138.1-ssu-nr99-seqs2-uniq.qza --o-dereplicated-taxa silva-138.1-ssu-nr99-tax2-derep-uniq-f515-r927.qza
+qiime taxa filter-seqs --i-sequences silva-138.1-ssu-nr99-seqs2-uniq.qza --i-taxonomy silva-138.1-ssu-nr99-tax2-derep-uniq-f515-r927.qza --p-exclude archea,eukaryota --p-include bacteria --o-filtered-sequences silva-138.1-ssu-nr99-seqs2-filtered-uniq.qza 
+qiime feature-classifier fit-classifier-naive-bayes --i-reference-reads silva-138.1-ssu-nr99-seqs2-filtered-uniq.qza --i-reference-taxonomy silva-138.1-ssu-nr99-tax2-derep-uniq-f515-r927.qza --o-classifier silva-138.1-ssu-nr99-515f-927r-classifier2.qza
+qiime feature-classifier classify-sklearn --i-classifier silva-138.1-ssu-nr99-515f-927r-classifier2.qza --i-reads rep_seqs.qza --p-reads-per-batch 100 --o-classification taxonomy_silva2.qza
+
+qiime metadata tabulate \
+  --m-input-file taxonomy_silva2.qza \
+  --o-visualization taxonomy_silva2.qzv
+qiime feature-classifier classify-sklearn --i-classifier silva-138-99-nb-classifier.qza --i-reads rep_seqs.qza --o-classification taxonomy_Silva.qza --p-reads-per-batch 20
+
+qiime feature-classifier classify-sklearn --i-classifier gg-13-8-99-nb-classifier.qza --i-reads rep_seqs.qza --o-classification taxonomy_gg.qza
+
+qiime metadata tabulate --m-input-file taxonomy.qza --o-visualization taxonomy_Silva.qzv
+qiime taxa barplot --i-table table.qza --i-taxonomy taxonomy_silva2.qza --m-metadata-file Metadata.tsv --o-visualization taxa_bar_plots_Silva2.qzv
+##PICRUST2 in qiime2021.11 conda env 
+
+
+conda activate qiime2-2021.11
+
+conda install q2-picrust2=2021.11 -c conda-forge -c bioconda -c gavinmdouglas 
+
+qiime picrust2 full-pipeline \
+   --i-table table.qza \
+   --i-seq rep_seqs.qza \
+   --output-dir q2-picrust2_output \
+   --p-placement-tool sepp \
+   --p-threads 2 \
+   --p-hsp-method pic \
+   --p-max-nsti 2 \
+   --verbose
+
+qiime tools export \
+   --input-path q2-picrust2_output/pathway_abundance.qza \
+   --output-path pathabun_exported
+
+
+biom convert \
+   -i pathabun_exported/feature-table.biom \
+   -o pathabun_exported/feature-table.biom.tsv \
+   --to-tsv
+
+add_descriptions.py -i ecmeta_exported/feature-table.biom.tsv -m EC \
+                    -o ecmeta_exported/pred_metagenome_descrip.tsv
+
+
+
+qiime taxa collapse --i-table table.qza --i-taxonomy taxonomy_silva2.qza --p-level 7 --o-collapsed-table collapsed_table.qza
+qiime tools extract –input-path collapsed_table.qza
+
+qiime feature-table summarize --i-table q2-picrust2_output/ko_metagenome.qza  --o-visualization q2-picrust2_output/ko_metagenome.qzv
+
+qiime tools export  --input-path q2-picrust2_output/ec_metagenome.qza --output-path ecmeta_exported
