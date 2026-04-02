@@ -1,0 +1,7 @@
+##Metabonomics in house matlab scripts for Matlab##
+
+plot(x’) a b x(:,a:b)=[]; ppm(:,a:b)=[]; a=doAlignment(x,ppm,median(x),0) n=normalise(a,’total’)
+
+PCA mpca=pcamodel(x,0.5) mpca.addClass('class name',find(y==0)); mpca.addClass('class name',find(y==1)); mpca.twoFirstComponents mpca.addComponent mpca.scorePlot(3,4,’classes’) sx=std(x); colorplot(ppm,mpca.P(:,1)’.*sx,mpca.P(:,1).^2) mpca.twoFirstComponents text(mpca.T(:,1),mpca.T(:,2),label)
+
+OPLS-DA mjro2pls=mjrMainO2pls(x,y,1,1,0,7,'nfold','mc','uv',[],'re','y','standard'); mjrO2plsSummaryPlot(mjro2pls,x,y,ppm); [pv,Q2p, R2p,m] = JTPpermutate(x,y,1000,1,0,7,’uv’)
